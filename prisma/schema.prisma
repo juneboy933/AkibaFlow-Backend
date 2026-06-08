@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum GoalStatus {
+  ACTIVE
+  MATURED
+  CLOSED
+}
+
+enum PlanFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAW
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum NotificationType {
+  REMINDER
+  MATURITY
+  DEPOSIT_SUCCESS
+  WITHDRAWAL_SUCCESS
+  FAILED_DEPOSIT
+}
+
+model User {
+  id       String @id @default(uuid())
+
+  name     String
+  phone    String @unique
+  password String
+
+  role UserRole @default(USER)
+
+  goals         Goal[]
+  transactions  Transaction[]
+  payments      Payment[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Goal {
+  id String @id @default(uuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  name        String
+  description String?
+
+  targetAmount  Decimal @default(0.00) @db.Decimal(20, 2)
+  currentAmount Decimal @default(0.00) @db.Decimal(20, 2)
+
+  lockPeriod Int
+
+  startDate    DateTime @default(now())
+  maturityDate DateTime
+
+  status GoalStatus @default(ACTIVE)
+
+  savingsPlan  SavingPlan?
+  analytics    GoalAnalytics?
+  transactions Transaction[]
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SavingPlan {
+  id String @id @default(uuid())
+
+  goalId String @unique
+  goal   Goal @relation(fields: [goalId], references: [id])
+
+  frequency PlanFrequency @default(WEEKLY)
+
+  amount Decimal @default(0.00) @db.Decimal(20, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id String @id @default(uuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  goalId String
+  goal   Goal @relation(fields: [goalId], references: [id])
+
+  amount Decimal @db.Decimal(20, 2)
+
+  type   TransactionType
+  status TransactionStatus @default(PENDING)
+
+  reference String?
+
+  payment Payment?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([goalId])
+}
+
+model Payment {
+  id String @id @default(uuid())
+
+  goalId String
+  goal   Goal @relation(fields: [goalId], references: [id])
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  transactionId String? @unique
+  transaction Transaction? @relation( fields: [transactionId], references: [id])
+
+  amount Decimal @db.Decimal(20, 2)
+  phone  String?
+
+  merchantRequestId String? @unique
+  checkoutRequestId String? @unique
+  mpesaReceiptNumber String? @unique
+
+  status PaymentStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([goalId])
+}
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  type    NotificationType
+  message String
+
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  sentAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model GoalAnalytics {
+  id String @id @default(uuid())
+
+  goalId String @unique
+  goal   Goal @relation(fields: [goalId], references: [id])
+
+  expectedAmount       Decimal @default(0.00) @db.Decimal(20, 2)
+  actualAmount         Decimal @default(0.00) @db.Decimal(20, 2)
+  completionPercentage Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
