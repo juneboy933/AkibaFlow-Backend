@@ -12,7 +12,11 @@ import { GoalStatus, TransactionStatus, TransactionType } from '@prisma/client';
 export class TransactionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createDeposit(userId: string, dto: CreateDepositDto) {
+  async createDeposit(
+    userId: string,
+    dto: CreateDepositDto,
+    receiptNumber: string,
+  ) {
     const existingGoal = await this.prisma.goal.findFirst({
       where: {
         id: dto.goalId,
@@ -47,6 +51,7 @@ export class TransactionsService {
           amount: depositAmount,
           type: TransactionType.DEPOSIT,
           status: TransactionStatus.SUCCESS,
+          reference: receiptNumber,
         },
       });
 
@@ -83,14 +88,18 @@ export class TransactionsService {
         });
       }
 
-      await tx.goalAnalytics.update({
-        where: {
-          goalId: dto.goalId,
-        },
-        data: {
+      await tx.goalAnalytics.upsert({
+        where: { goalId: dto.goalId },
+        update: {
           actualAmount: {
             increment: depositAmount,
           },
+          completionPercentage,
+        },
+        create: {
+          goalId: dto.goalId,
+          expectedAmount: updatedGoal.targetAmount,
+          actualAmount: depositAmount,
           completionPercentage,
         },
       });

@@ -152,6 +152,7 @@ model Payment {
   merchantRequestId String? @unique
   checkoutRequestId String? @unique
   mpesaReceiptNumber String? @unique
+  resultDescription String?
 
   status PaymentStatus @default(PENDING)
 

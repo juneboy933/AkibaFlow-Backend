@@ -4,9 +4,10 @@ import { PaymentsService } from './payments.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { TransactionsModule } from 'src/transactions/transactions.module';
+import { MpesaModule } from 'src/mpesa/mpesa.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TransactionsModule],
+  imports: [PrismaModule, AuthModule, TransactionsModule, MpesaModule],
   controllers: [PaymentsController],
   providers: [PaymentsService],
 })

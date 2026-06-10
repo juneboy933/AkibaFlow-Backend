@@ -17,8 +17,8 @@ interface AuthenticatedUser extends Request {
 export class PaymentsController {
   constructor(private readonly payment: PaymentsService) {}
 
-  @UseGuards(JwtGuard)
   @Post('stk-push')
+  @UseGuards(JwtGuard)
   initiatePayment(
     @Req() req: AuthenticatedUser,
     @Body() dto: InitiatePaymentDto,

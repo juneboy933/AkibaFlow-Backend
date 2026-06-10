@@ -7,6 +7,7 @@ import { ConfigModule } from '@nestjs/config';
 import { GoalsModule } from './goals/goals.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { PaymentsModule } from './payments/payments.module';
+import { MpesaModule } from './mpesa/mpesa.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PaymentsModule } from './payments/payments.module';
     GoalsModule,
     TransactionsModule,
     PaymentsModule,
+    MpesaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
