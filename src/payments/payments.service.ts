@@ -18,11 +18,34 @@ export class PaymentsService {
     private readonly mpesa: MpesaService,
   ) {}
 
+  private normalizePhone(phone: string) {
+    const digits = phone.replace(/\D+/g, '');
+
+    if (/^0[7][0-9]{8}$/.test(digits)) {
+      return `254${digits.slice(1)}`;
+    }
+
+    if (/^7[0-9]{8}$/.test(digits)) {
+      return `254${digits}`;
+    }
+
+    if (/^254[7][0-9]{8}$/.test(digits)) {
+      return digits;
+    }
+
+    throw new BadRequestException(
+      'Phone number must be a valid Kenyan mobile number',
+    );
+  }
+
   async initiatePayment(userId: string, dto: InitiatePaymentDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    if (user.phone !== dto.phone) {
+    const userPhone = this.normalizePhone(user.phone);
+    const requestPhone = this.normalizePhone(dto.phone);
+
+    if (userPhone !== requestPhone) {
       throw new BadRequestException('Phone number mismatch');
     }
 
@@ -45,7 +68,7 @@ export class PaymentsService {
 
     const stk = await this.mpesa.stkPush({
       amount,
-      phone: dto.phone,
+      phone: requestPhone,
     });
 
     if (stk.ResponseCode !== '0') {
@@ -57,7 +80,7 @@ export class PaymentsService {
         userId,
         goalId: dto.goalId,
         amount: amount.toString(),
-        phone: dto.phone,
+        phone: requestPhone,
         status: PaymentStatus.PENDING,
         merchantRequestId: stk.MerchantRequestID,
         checkoutRequestId: stk.CheckoutRequestID,
@@ -121,30 +144,43 @@ export class PaymentsService {
     });
 
     if (locked.count === 0) {
+      const freshPayment = await this.prisma.payment.findUnique({
+        where: { id: payment.id },
+      });
+
+      if (freshPayment?.status === PaymentStatus.SUCCESS) {
+        return { message: 'Already processed' };
+      }
+
       return { message: 'Already processing' };
     }
 
     try {
-      const deposit = await this.transaction.createDeposit(
-        payment.userId,
-        {
-          goalId: payment.goalId,
-          amount: Number(payment.amount),
-        },
-        String(receipt),
-      );
+      const result = await this.prisma.$transaction(async (tx) => {
+        const deposit = await this.transaction.createDeposit(
+          payment.userId,
+          {
+            goalId: payment.goalId,
+            amount: Number(payment.amount),
+          },
+          String(receipt),
+          tx,
+        );
 
-      const updated = await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.SUCCESS,
-          transactionId: deposit.data.transaction.id,
-        },
+        const updatedPayment = await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentStatus.SUCCESS,
+            transactionId: deposit.data.transaction.id,
+          },
+        });
+
+        return { deposit, updatedPayment };
       });
 
       return {
         message: 'Payment successful',
-        data: updated,
+        data: result.updatedPayment,
       };
     } catch (err) {
       await this.prisma.payment.update({

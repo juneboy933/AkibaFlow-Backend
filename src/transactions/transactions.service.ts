@@ -6,7 +6,12 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { CreateWithdrawDto } from './dto/create-withdraw.dto';
-import { GoalStatus, TransactionStatus, TransactionType } from '@prisma/client';
+import {
+  Prisma,
+  GoalStatus,
+  TransactionStatus,
+  TransactionType,
+} from '@prisma/client';
 
 @Injectable()
 export class TransactionsService {
@@ -15,36 +20,36 @@ export class TransactionsService {
   async createDeposit(
     userId: string,
     dto: CreateDepositDto,
-    receiptNumber: string,
+    receiptNumber?: string,
+    tx?: Prisma.TransactionClient,
   ) {
-    const existingGoal = await this.prisma.goal.findFirst({
-      where: {
-        id: dto.goalId,
-        userId,
-      },
-    });
+    const run = async (client: Prisma.TransactionClient) => {
+      const existingGoal = await client.goal.findFirst({
+        where: {
+          id: dto.goalId,
+          userId,
+        },
+      });
 
-    if (!existingGoal) {
-      throw new NotFoundException('Goal not found');
-    }
+      if (!existingGoal) {
+        throw new NotFoundException('Goal not found');
+      }
 
-    if (existingGoal.status !== GoalStatus.ACTIVE) {
-      throw new BadRequestException('Goal is not active');
-    }
+      if (existingGoal.status !== GoalStatus.ACTIVE) {
+        throw new BadRequestException('Goal is not active');
+      }
 
-    const currentAmount = Number(existingGoal.currentAmount);
-    const targetAmount = Number(existingGoal.targetAmount);
+      const currentAmount = Number(existingGoal.currentAmount);
+      const targetAmount = Number(existingGoal.targetAmount);
+      const remainingAmount = targetAmount - currentAmount;
 
-    const remainingAmount = targetAmount - currentAmount;
+      if (remainingAmount <= 0) {
+        throw new BadRequestException('Goal has already reached its target');
+      }
 
-    if (remainingAmount <= 0) {
-      throw new BadRequestException('Goal has already reached its target');
-    }
+      const depositAmount = Math.min(dto.amount, remainingAmount);
 
-    const depositAmount = Math.min(dto.amount, remainingAmount);
-
-    return this.prisma.$transaction(async (tx) => {
-      const depositTx = await tx.transaction.create({
+      const depositTx = await client.transaction.create({
         data: {
           userId,
           goalId: dto.goalId,
@@ -55,7 +60,7 @@ export class TransactionsService {
         },
       });
 
-      const updatedGoal = await tx.goal.update({
+      const updatedGoal = await client.goal.update({
         where: {
           id: dto.goalId,
         },
@@ -78,7 +83,7 @@ export class TransactionsService {
       if (
         Number(updatedGoal.currentAmount) >= Number(updatedGoal.targetAmount)
       ) {
-        await tx.goal.update({
+        await client.goal.update({
           where: {
             id: dto.goalId,
           },
@@ -88,7 +93,7 @@ export class TransactionsService {
         });
       }
 
-      await tx.goalAnalytics.upsert({
+      await client.goalAnalytics.upsert({
         where: { goalId: dto.goalId },
         update: {
           actualAmount: {
@@ -117,7 +122,13 @@ export class TransactionsService {
           targetAmount: updatedGoal.targetAmount,
         },
       };
-    });
+    };
+
+    if (tx) {
+      return run(tx);
+    }
+
+    return this.prisma.$transaction(run);
   }
 
   async createWithdraw(userId: string, dto: CreateWithdrawDto) {

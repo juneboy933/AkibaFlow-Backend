@@ -20,6 +20,24 @@ interface DarajaErrorResponse {
 export class MpesaService {
   constructor(private readonly http: HttpService) {}
 
+  private normalizePhone(phone: string) {
+    const digits = phone.replace(/\D+/g, '');
+
+    if (/^0[7][0-9]{8}$/.test(digits)) {
+      return `254${digits.slice(1)}`;
+    }
+
+    if (/^7[0-9]{8}$/.test(digits)) {
+      return `254${digits}`;
+    }
+
+    if (/^254[7][0-9]{8}$/.test(digits)) {
+      return digits;
+    }
+
+    throw new BadGatewayException('Invalid M-Pesa phone number format');
+  }
+
   private generateTimestamp(): string {
     const d = new Date();
     return (
@@ -82,7 +100,7 @@ export class MpesaService {
     const shortcode = process.env.MPESA_SHORTCODE!;
     const callbackUrl = process.env.MPESA_CALLBACK_URL!;
 
-    const phone = dto.phone.replace('+', '');
+    const phone = this.normalizePhone(dto.phone);
 
     try {
       const res = await firstValueFrom(
