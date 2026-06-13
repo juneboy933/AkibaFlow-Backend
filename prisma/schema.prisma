@@ -106,8 +106,14 @@ model SavingPlan {
 
   amount Decimal @default(0.00) @db.Decimal(20, 2)
 
+  nextContributionDate DateTime
+  isActive Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([nextContributionDate])
+  @@index([isActive])
 }
 
 model Transaction {

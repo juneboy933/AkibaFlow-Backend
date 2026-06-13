@@ -8,6 +8,7 @@ import { GoalsModule } from './goals/goals.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { PaymentsModule } from './payments/payments.module';
 import { MpesaModule } from './mpesa/mpesa.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MpesaModule } from './mpesa/mpesa.module';
     TransactionsModule,
     PaymentsModule,
     MpesaModule,
+    PlansModule,
   ],
   controllers: [AppController],
   providers: [AppService],
