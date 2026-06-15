@@ -5,9 +5,16 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { TransactionsModule } from 'src/transactions/transactions.module';
 import { MpesaModule } from 'src/mpesa/mpesa.module';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TransactionsModule, MpesaModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    TransactionsModule,
+    MpesaModule,
+    NotificationsModule,
+  ],
   controllers: [PaymentsController],
   providers: [PaymentsService],
 })

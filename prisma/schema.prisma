@@ -46,6 +46,7 @@ enum NotificationType {
   DEPOSIT_SUCCESS
   WITHDRAWAL_SUCCESS
   FAILED_DEPOSIT
+  PLAN_CREATED
 }
 
 model User {
@@ -176,6 +177,8 @@ model Notification {
   user   User @relation(fields: [userId], references: [id])
 
   type    NotificationType
+
+  title String
   message String
 
   isRead Boolean @default(false)
@@ -184,6 +187,7 @@ model Notification {
   sentAt    DateTime @default(now())
 
   @@index([userId])
+  @@index([userId, isRead])
 }
 
 model GoalAnalytics {

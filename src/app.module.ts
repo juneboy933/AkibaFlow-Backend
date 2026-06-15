@@ -9,6 +9,8 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { PaymentsModule } from './payments/payments.module';
 import { MpesaModule } from './mpesa/mpesa.module';
 import { PlansModule } from './plans/plans.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { NotifiactionsService } from './notifiactions/notifiactions.service';
 
 @Module({
   imports: [
@@ -20,8 +22,9 @@ import { PlansModule } from './plans/plans.module';
     PaymentsModule,
     MpesaModule,
     PlansModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, NotifiactionsService],
 })
 export class AppModule {}

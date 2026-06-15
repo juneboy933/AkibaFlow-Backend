@@ -3,14 +3,23 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Goal, GoalStatus, PlanFrequency } from '@prisma/client';
+import {
+  Goal,
+  GoalStatus,
+  NotificationType,
+  PlanFrequency,
+} from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class PlansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notification: NotificationsService,
+  ) {}
 
   private async getGoal(userId: string, goalId: string) {
     const goal = await this.prisma.goal.findFirst({
@@ -42,6 +51,10 @@ export class PlansService {
   }
 
   private validatePlan(goal: Goal, amount: number, frequency: PlanFrequency) {
+    if (amount <= 0) {
+      throw new BadRequestException('Plan amount must be greater than zero');
+    }
+
     const periods = this.calculatePeriods(goal.maturityDate, frequency);
 
     const projectedSavings = periods * amount;
@@ -110,6 +123,13 @@ export class PlansService {
         nextContributionDate: this.calculateNextContributionDate(dto.frequency),
       },
     });
+
+    await this.notification.createNotification(
+      userId,
+      NotificationType.PLAN_CREATED,
+      'Savings Plan Created',
+      `Your ${dto.frequency.toLowerCase()} savings plan has been created.`,
+    );
 
     await this.prisma.goalAnalytics.upsert({
       where: {
@@ -207,19 +227,24 @@ export class PlansService {
       throw new NotFoundException('Saving plan not found');
     }
 
-    this.validatePlan(goal, dto.amount, dto.frequency);
+    const amount = dto.amount ?? Number(existingPlan.amount);
+
+    const frequency = dto.frequency ?? existingPlan.frequency;
+
+    this.validatePlan(goal, amount, frequency);
+
+    const frequencyChanged = frequency !== existingPlan.frequency;
 
     const updatedPlan = await this.prisma.savingPlan.update({
       where: {
         goalId,
       },
       data: {
-        amount: dto.amount,
-        frequency: dto.frequency,
-        nextContributionDate:
-          dto.frequency !== existingPlan.frequency
-            ? this.calculateNextContributionDate(dto.frequency)
-            : existingPlan.nextContributionDate,
+        amount,
+        frequency,
+        nextContributionDate: frequencyChanged
+          ? this.calculateNextContributionDate(frequency)
+          : existingPlan.nextContributionDate,
       },
     });
 

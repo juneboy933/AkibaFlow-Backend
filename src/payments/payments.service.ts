@@ -6,9 +6,10 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TransactionsService } from 'src/transactions/transactions.service';
 import { MpesaService } from 'src/mpesa/mpesa.service';
-import { GoalStatus, PaymentStatus } from '@prisma/client';
+import { GoalStatus, NotificationType, PaymentStatus } from '@prisma/client';
 import { InitiatePaymentDto } from './dto/initiate-stkPush.dto';
 import { MpesaCallbackDto } from './dto/callback.dto';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class PaymentsService {
@@ -16,6 +17,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly transaction: TransactionsService,
     private readonly mpesa: MpesaService,
+    private readonly notification: NotificationsService,
   ) {}
 
   private normalizePhone(phone: string) {
@@ -131,6 +133,13 @@ export class PaymentsService {
         },
       });
 
+      await this.notification.createNotification(
+        payment.userId,
+        NotificationType.FAILED_DEPOSIT,
+        'Deposit failed',
+        'Your Mpesa deposit could not be completed.',
+      );
+
       return { message: 'Payment failed' };
     }
 
@@ -189,6 +198,17 @@ export class PaymentsService {
         return { deposit, updatedPayment };
       });
 
+      const goal = await this.prisma.goal.findUnique({
+        where: { id: result.updatedPayment.goalId },
+      });
+
+      await this.notification.createNotification(
+        result.updatedPayment.userId,
+        NotificationType.DEPOSIT_SUCCESS,
+        'Deposit successful',
+        `Kes ${Number(result.updatedPayment.amount)} has been added to ${goal?.name}.`,
+      );
+
       return {
         message: 'Payment successful',
         data: result.updatedPayment,
@@ -198,6 +218,13 @@ export class PaymentsService {
         where: { id: payment.id },
         data: { status: PaymentStatus.FAILED },
       });
+
+      await this.notification.createNotification(
+        payment.userId,
+        NotificationType.FAILED_DEPOSIT,
+        'Deposit failed',
+        'Your Mpesa deposit could not be completed.',
+      );
 
       throw err;
     }
