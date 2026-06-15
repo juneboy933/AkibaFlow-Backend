@@ -19,23 +19,34 @@ export class PaymentsService {
   ) {}
 
   private normalizePhone(phone: string) {
+    // Extract digits only (removes + and non-digit characters)
     const digits = phone.replace(/\D+/g, '');
 
-    if (/^0[7][0-9]{8}$/.test(digits)) {
-      return `254${digits.slice(1)}`;
+    let international254: string;
+
+    // Domestic format: 0XXXXXXXXX (10 digits)
+    if (/^0[0-9]{9}$/.test(digits)) {
+      // Validate Safaricom: 07xxxxxxxx or 011xxxxxxx
+      if (!/^(07[0-9]{8}|011[0-9]{7})$/.test(digits)) {
+        throw new BadRequestException('Only Safaricom numbers are supported');
+      }
+      // Convert: 0712345678 → 254712345678
+      international254 = `254${digits.slice(1)}`;
+    }
+    // International format: 254XXXXXXXXX (12 digits)
+    else if (/^254[0-9]{9}$/.test(digits)) {
+      // Validate Safaricom: 2547xxxxxxxx or 25411xxxxxxx
+      if (!/^(2547[0-9]{8}|25411[0-9]{7})$/.test(digits)) {
+        throw new BadRequestException('Only Safaricom numbers are supported');
+      }
+      international254 = digits;
+    } else {
+      throw new BadRequestException(
+        'Phone number must be a valid Kenyan Safaricom number',
+      );
     }
 
-    if (/^7[0-9]{8}$/.test(digits)) {
-      return `254${digits}`;
-    }
-
-    if (/^254[7][0-9]{8}$/.test(digits)) {
-      return digits;
-    }
-
-    throw new BadRequestException(
-      'Phone number must be a valid Kenyan mobile number',
-    );
+    return international254;
   }
 
   async initiatePayment(userId: string, dto: InitiatePaymentDto) {

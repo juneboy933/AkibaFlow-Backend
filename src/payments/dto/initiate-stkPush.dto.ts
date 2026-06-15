@@ -6,9 +6,9 @@ export class InitiatePaymentDto {
   @IsNotEmpty()
   goalId!: string;
 
-  @Matches(/^(?:\+254|254|0)7\d{8}$/, {
+  @Matches(/^(?:\+254|254|0)(?:7\d{8}|11\d{7})$/, {
     message:
-      'Phone number must be in format +254712345678, 254712345678 or 0712345678',
+      'Phone number must be in format +254712345678, 254712345678, 0712345678 or 0112345678',
   })
   @IsString()
   @IsNotEmpty()
