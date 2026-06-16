@@ -1,17 +1,18 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  Post,
+  Req,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { InitiatePaymentDto } from './dto/initiate-stkPush.dto';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
-import { Request } from 'express';
-import { UserRole } from '@prisma/client';
 import { MpesaCallbackDto } from './dto/callback.dto';
-
-interface AuthenticatedUser extends Request {
-  user: {
-    sub: string;
-    role: UserRole;
-  };
-}
+import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('payments')
 export class PaymentsController {
@@ -19,15 +20,22 @@ export class PaymentsController {
 
   @Post('stk-push')
   @UseGuards(JwtGuard)
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   initiatePayment(
-    @Req() req: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: InitiatePaymentDto,
   ) {
     return this.payment.initiatePayment(req.user.sub, dto);
   }
 
   @Post('callback')
-  handleCallback(@Body() dto: MpesaCallbackDto) {
+  handleCallback(
+    @Headers('x-callback-secret') secret: string,
+    @Body() dto: MpesaCallbackDto,
+  ) {
+    if (secret !== process.env.MPESA_CALLBACK_SECRET) {
+      throw new UnauthorizedException('Invalid callback');
+    }
     return this.payment.handleCallback(dto);
   }
 }

@@ -10,6 +10,7 @@ import { GoalStatus, NotificationType, PaymentStatus } from '@prisma/client';
 import { InitiatePaymentDto } from './dto/initiate-stkPush.dto';
 import { MpesaCallbackDto } from './dto/callback.dto';
 import { NotificationsService } from 'src/notifications/notifications.service';
+import { normalizePhone } from 'src/common/utils/phone.utils';
 
 @Injectable()
 export class PaymentsService {
@@ -20,43 +21,12 @@ export class PaymentsService {
     private readonly notification: NotificationsService,
   ) {}
 
-  private normalizePhone(phone: string) {
-    // Extract digits only (removes + and non-digit characters)
-    const digits = phone.replace(/\D+/g, '');
-
-    let international254: string;
-
-    // Domestic format: 0XXXXXXXXX (10 digits)
-    if (/^0[0-9]{9}$/.test(digits)) {
-      // Validate Safaricom: 07xxxxxxxx or 011xxxxxxx
-      if (!/^(07[0-9]{8}|011[0-9]{7})$/.test(digits)) {
-        throw new BadRequestException('Only Safaricom numbers are supported');
-      }
-      // Convert: 0712345678 → 254712345678
-      international254 = `254${digits.slice(1)}`;
-    }
-    // International format: 254XXXXXXXXX (12 digits)
-    else if (/^254[0-9]{9}$/.test(digits)) {
-      // Validate Safaricom: 2547xxxxxxxx or 25411xxxxxxx
-      if (!/^(2547[0-9]{8}|25411[0-9]{7})$/.test(digits)) {
-        throw new BadRequestException('Only Safaricom numbers are supported');
-      }
-      international254 = digits;
-    } else {
-      throw new BadRequestException(
-        'Phone number must be a valid Kenyan Safaricom number',
-      );
-    }
-
-    return international254;
-  }
-
   async initiatePayment(userId: string, dto: InitiatePaymentDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const userPhone = this.normalizePhone(user.phone);
-    const requestPhone = this.normalizePhone(dto.phone);
+    const userPhone = normalizePhone(user.phone);
+    const requestPhone = normalizePhone(dto.phone);
 
     if (userPhone !== requestPhone) {
       throw new BadRequestException('Phone number mismatch');

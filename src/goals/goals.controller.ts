@@ -12,15 +12,7 @@ import { GoalsService } from './goals.service';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
-import { UserRole } from '@prisma/client';
-import { Request } from 'express';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    sub: string;
-    role: UserRole;
-  };
-}
+import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtGuard)
 @Controller('goals')

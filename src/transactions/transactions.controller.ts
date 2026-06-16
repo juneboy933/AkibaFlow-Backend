@@ -11,15 +11,7 @@ import { TransactionsService } from './transactions.service';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { CreateWithdrawDto } from './dto/create-withdraw.dto';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
-import { UserRole } from '@prisma/client';
-import { Request } from 'express';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    sub: string;
-    role: UserRole;
-  };
-}
+import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtGuard)
 @Controller('transactions')

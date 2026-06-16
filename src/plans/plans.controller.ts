@@ -10,18 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
-import { UserRole } from '@prisma/client';
-import { Request } from 'express';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
-
-interface AuthenticatedUser extends Request {
-  user: {
-    sub: string;
-    role: UserRole;
-  };
-}
+import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtGuard)
 @Controller('plans')
@@ -29,26 +21,26 @@ export class PlansController {
   constructor(private readonly plan: PlansService) {}
 
   @Post()
-  createPlan(@Req() req: AuthenticatedUser, @Body() dto: CreatePlanDto) {
+  createPlan(@Req() req: AuthenticatedRequest, @Body() dto: CreatePlanDto) {
     return this.plan.createPlan(req.user.sub, dto);
   }
 
   @Get(':goalId')
   getPlanByGoal(
-    @Req() req: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Param('goalId') goalId: string,
   ) {
     return this.plan.getPlanByGoal(req.user.sub, goalId);
   }
 
   @Get()
-  getPlans(@Req() req: AuthenticatedUser) {
+  getPlans(@Req() req: AuthenticatedRequest) {
     return this.plan.getPlans(req.user.sub);
   }
 
   @Patch(':goalId')
   updatePlan(
-    @Req() req: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Param('goalId') goalId: string,
     @Body() dto: UpdatePlanDto,
   ) {
@@ -56,7 +48,10 @@ export class PlansController {
   }
 
   @Delete(':goalId')
-  deletePlan(@Req() req: AuthenticatedUser, @Param('goalId') goalId: string) {
+  deletePlan(
+    @Req() req: AuthenticatedRequest,
+    @Param('goalId') goalId: string,
+  ) {
     return this.plan.deletePlan(req.user.sub, goalId);
   }
 }

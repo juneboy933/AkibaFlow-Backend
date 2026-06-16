@@ -7,17 +7,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
-import { Request } from 'express';
 import { NotificationsService } from './notifications.service';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
-
-interface AuthenticatedUser extends Request {
-  user: {
-    sub: string;
-    role: UserRole;
-  };
-}
+import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtGuard)
 @Controller('notifications')
@@ -26,7 +18,7 @@ export class NotificationsController {
 
   @Get()
   getNotifications(
-    @Req() req: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Query('page') page = 1,
     @Query('limit') limit = 20,
   ) {
@@ -38,17 +30,17 @@ export class NotificationsController {
   }
 
   @Get('count')
-  unreadCount(@Req() req: AuthenticatedUser) {
+  unreadCount(@Req() req: AuthenticatedRequest) {
     return this.notification.unreadCount(req.user.sub);
   }
 
   @Patch(':id')
-  markAsRead(@Req() req: AuthenticatedUser, @Param('id') id: string) {
+  markAsRead(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.notification.markAsRead(req.user.sub, id);
   }
 
   @Patch()
-  markAllAsRead(@Req() req: AuthenticatedUser) {
+  markAllAsRead(@Req() req: AuthenticatedRequest) {
     return this.notification.markAllAsRead(req.user.sub);
   }
 }

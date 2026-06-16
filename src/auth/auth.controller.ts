@@ -3,13 +3,8 @@ import { AuthService } from './auth.service';
 import { CreateRegisterDto } from './dto/register.dto';
 import { CreateLoginDto } from './dto/login.dto';
 import { JwtGuard } from './guards/jwt/jwt.guard';
-
-interface AuthenticatedRequest extends Request {
-  user: {
-    sub: string;
-    role: string;
-  };
-}
+import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
@@ -21,6 +16,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   login(@Body() dto: CreateLoginDto) {
     return this.auth.loginUser(dto);
   }

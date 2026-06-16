@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { MpesaStkDto } from './dto/mpesa.dto';
 import axios from 'axios';
+import { normalizePhone } from 'src/common/utils/phone.utils';
 
 type MpesaStkPushResponse = {
   MerchantRequestID: string;
@@ -19,35 +20,6 @@ interface DarajaErrorResponse {
 @Injectable()
 export class MpesaService {
   constructor(private readonly http: HttpService) {}
-
-  private normalizePhone(phone: string) {
-    // Extract digits only (removes + and non-digit characters)
-    const digits = phone.replace(/\D+/g, '');
-
-    let international254: string;
-
-    // Domestic format: 0XXXXXXXXX (10 digits)
-    if (/^0[0-9]{9}$/.test(digits)) {
-      // Validate Safaricom: 07xxxxxxxx or 011xxxxxxx
-      if (!/^(07[0-9]{8}|011[0-9]{7})$/.test(digits)) {
-        throw new BadGatewayException('Only Safaricom numbers are supported');
-      }
-      // Convert: 0712345678 → 254712345678
-      international254 = `254${digits.slice(1)}`;
-    }
-    // International format: 254XXXXXXXXX (12 digits)
-    else if (/^254[0-9]{9}$/.test(digits)) {
-      // Validate Safaricom: 2547xxxxxxxx or 25411xxxxxxx
-      if (!/^(2547[0-9]{8}|25411[0-9]{7})$/.test(digits)) {
-        throw new BadGatewayException('Only Safaricom numbers are supported');
-      }
-      international254 = digits;
-    } else {
-      throw new BadGatewayException('Only Safaricom numbers are supported');
-    }
-
-    return international254;
-  }
 
   private generateTimestamp(): string {
     const d = new Date();
@@ -77,6 +49,7 @@ export class MpesaService {
           `${process.env.MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
           {
             headers: { Authorization: `Basic ${auth}` },
+            timeout: 10000,
           },
         ),
       );
@@ -111,7 +84,7 @@ export class MpesaService {
     const shortcode = process.env.MPESA_SHORTCODE!;
     const callbackUrl = process.env.MPESA_CALLBACK_URL!;
 
-    const phone = this.normalizePhone(dto.phone);
+    const phone = normalizePhone(dto.phone);
 
     try {
       const res = await firstValueFrom(
@@ -130,7 +103,7 @@ export class MpesaService {
             AccountReference: 'AkibaFlow',
             TransactionDesc: 'Goal Savings Deposit',
           },
-          { headers: { Authorization: `Bearer ${token}` } },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 },
         ),
       );
 

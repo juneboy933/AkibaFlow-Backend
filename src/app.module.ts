@@ -11,6 +11,8 @@ import { MpesaModule } from './mpesa/mpesa.module';
 import { PlansModule } from './plans/plans.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { NotificationsService } from './notifications/notifications.service';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -23,8 +25,20 @@ import { NotificationsService } from './notifications/notifications.service';
     MpesaModule,
     PlansModule,
     NotificationsModule,
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 20,
+      },
+    ]),
   ],
   controllers: [AppController],
-  providers: [AppService, NotificationsService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
