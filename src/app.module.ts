@@ -10,7 +10,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { MpesaModule } from './mpesa/mpesa.module';
 import { PlansModule } from './plans/plans.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { NotifiactionsService } from './notifiactions/notifiactions.service';
+import { NotificationsService } from './notifications/notifications.service';
 
 @Module({
   imports: [
@@ -25,6 +25,6 @@ import { NotifiactionsService } from './notifiactions/notifiactions.service';
     NotificationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService, NotifiactionsService],
+  providers: [AppService, NotificationsService],
 })
 export class AppModule {}
