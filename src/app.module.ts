@@ -10,7 +10,6 @@ import { PaymentsModule } from './payments/payments.module';
 import { MpesaModule } from './mpesa/mpesa.module';
 import { PlansModule } from './plans/plans.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { NotificationsService } from './notifications/notifications.service';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
