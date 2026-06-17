@@ -3,9 +3,9 @@ import { IsEnum, IsNumber, IsPositive } from 'class-validator';
 
 export class UpdatePlanDto {
   @IsEnum(PlanFrequency)
-  frequency!: PlanFrequency;
+  frequency?: PlanFrequency;
 
   @IsNumber()
   @IsPositive()
-  amount!: number;
+  amount?: number;
 }

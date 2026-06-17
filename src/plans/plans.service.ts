@@ -13,37 +13,24 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { NotificationsService } from 'src/notifications/notifications.service';
+import { GoalsService } from 'src/goals/goals.service';
 
 @Injectable()
 export class PlansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notification: NotificationsService,
+    private readonly goalService: GoalsService,
   ) {}
 
-  private async getGoal(userId: string, goalId: string) {
-    const goal = await this.prisma.goal.findFirst({
-      where: {
-        id: goalId,
-        userId,
-      },
-    });
-
-    if (!goal) {
-      throw new NotFoundException('Goal not found');
-    }
-
-    return goal;
-  }
-
   private async getActiveGoal(userId: string, goalId: string) {
-    const goal = await this.getGoal(userId, goalId);
+    const goal = await this.goalService.getGoalById(userId, goalId);
 
-    if (goal.status !== GoalStatus.ACTIVE) {
+    if (goal.data.status !== GoalStatus.ACTIVE) {
       throw new BadRequestException('Goal is not active');
     }
 
-    if (goal.maturityDate <= new Date()) {
+    if (goal.data.maturityDate <= new Date()) {
       throw new BadRequestException('Goal has already matured');
     }
 
@@ -70,15 +57,21 @@ export class PlansService {
   }
 
   private calculatePeriods(maturityDate: Date, frequency: PlanFrequency) {
-    const millisecondsRemaining = maturityDate.getTime() - Date.now();
+    const now = new Date();
+    const diffMs = maturityDate.getTime() - now.getTime();
 
-    const WEEK = 1000 * 60 * 60 * 24 * 7;
+    if (frequency === PlanFrequency.WEEKLY) {
+      const WEEK = 1000 * 60 * 60 * 24 * 7;
+      return Math.ceil(diffMs / WEEK);
+    }
 
-    const MONTH = 1000 * 60 * 60 * 24 * 30;
-
-    return frequency === PlanFrequency.WEEKLY
-      ? Math.ceil(millisecondsRemaining / WEEK)
-      : Math.ceil(millisecondsRemaining / MONTH);
+    let count = 0;
+    const current = new Date(now);
+    while (current < maturityDate) {
+      count++;
+      current.setMonth(current.getMonth() + 1);
+    }
+    return count;
   }
 
   private calculateNextContributionDate(frequency: PlanFrequency) {
@@ -113,7 +106,7 @@ export class PlansService {
       throw new BadRequestException('Goal already has an active saving plan');
     }
 
-    this.validatePlan(goal, dto.amount, dto.frequency);
+    this.validatePlan(goal.data, dto.amount, dto.frequency);
 
     const plan = await this.prisma.savingPlan.create({
       data: {
@@ -138,11 +131,11 @@ export class PlansService {
       update: {},
       create: {
         goalId: dto.goalId,
-        expectedAmount: goal.targetAmount,
-        actualAmount: goal.currentAmount,
+        expectedAmount: goal.data.targetAmount,
+        actualAmount: goal.data.currentAmount,
         completionPercentage: this.calculateCompletionPercentage(
-          Number(goal.currentAmount),
-          Number(goal.targetAmount),
+          Number(goal.data.currentAmount),
+          Number(goal.data.targetAmount),
         ),
       },
     });
@@ -154,7 +147,7 @@ export class PlansService {
   }
 
   async getPlanByGoal(userId: string, goalId: string) {
-    await this.getGoal(userId, goalId);
+    await this.goalService.getGoalById(userId, goalId);
 
     const plan = await this.prisma.savingPlan.findFirst({
       where: {
@@ -231,7 +224,7 @@ export class PlansService {
 
     const frequency = dto.frequency ?? existingPlan.frequency;
 
-    this.validatePlan(goal, amount, frequency);
+    this.validatePlan(goal.data, amount, frequency);
 
     const frequencyChanged = frequency !== existingPlan.frequency;
 
@@ -268,12 +261,9 @@ export class PlansService {
       throw new NotFoundException('Saving plan not found');
     }
 
-    await this.prisma.savingPlan.update({
+    await this.prisma.savingPlan.delete({
       where: {
         goalId,
-      },
-      data: {
-        isActive: false,
       },
     });
 

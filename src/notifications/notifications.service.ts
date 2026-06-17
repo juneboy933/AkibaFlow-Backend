@@ -12,7 +12,7 @@ export class NotificationsService {
     title: string,
     message: string,
   ) {
-    return await this.prisma.notification.create({
+    const notification = await this.prisma.notification.create({
       data: {
         userId,
         type,
@@ -20,15 +20,25 @@ export class NotificationsService {
         message,
       },
     });
+
+    return {
+      message: 'Notification created successfully',
+      data: notification,
+    };
   }
 
   async getNotifications(userId: string, page = 1, limit = 20) {
-    return await this.prisma.notification.findMany({
+    const notifications = await this.prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
     });
+
+    return {
+      message: 'Notifications retrieved successfully',
+      data: notifications,
+    };
   }
 
   async markAsRead(userId: string, notificationId: string) {
@@ -49,12 +59,14 @@ export class NotificationsService {
   }
 
   async markAllAsRead(userId: string) {
-    return this.prisma.notification.updateMany({
+    await this.prisma.notification.updateMany({
       where: { userId, isRead: false },
       data: {
         isRead: true,
       },
     });
+
+    return { message: 'All notifications marked as read' };
   }
 
   async unreadCount(userId: string) {

@@ -3,13 +3,13 @@ import {
   Controller,
   Get,
   Param,
-  Post,
+  // Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
-import { CreateDepositDto } from './dto/create-deposit.dto';
-import { CreateWithdrawDto } from './dto/create-withdraw.dto';
+// import { CreateDepositDto } from './dto/create-deposit.dto';
+// import { CreateWithdrawDto } from './dto/create-withdraw.dto';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
 import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
 
@@ -18,21 +18,21 @@ import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-u
 export class TransactionsController {
   constructor(private readonly transaction: TransactionsService) {}
 
-  @Post('deposit')
-  createDeposit(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateDepositDto,
-  ) {
-    return this.transaction.createDeposit(req.user.sub, dto);
-  }
+  // @Post('deposit')
+  // createDeposit(
+  //   @Req() req: AuthenticatedRequest,
+  //   @Body() dto: CreateDepositDto,
+  // ) {
+  //   return this.transaction.createDeposit(req.user.sub, dto);
+  // }
 
-  @Post('withdraw')
-  createWithdraw(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateWithdrawDto,
-  ) {
-    return this.transaction.createWithdraw(req.user.sub, dto);
-  }
+  // @Post('withdraw')
+  // createWithdraw(
+  //   @Req() req: AuthenticatedRequest,
+  //   @Body() dto: CreateWithdrawDto,
+  // ) {
+  //   return this.transaction.createWithdraw(req.user.sub, dto);
+  // }
 
   @Get()
   getTransactions(@Req() req: AuthenticatedRequest) {
