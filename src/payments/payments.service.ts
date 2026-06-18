@@ -6,11 +6,17 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TransactionsService } from 'src/transactions/transactions.service';
 import { MpesaService } from 'src/mpesa/mpesa.service';
-import { GoalStatus, NotificationType, PaymentStatus } from '@prisma/client';
+import {
+  GoalStatus,
+  NotificationType,
+  PaymentStatus,
+  Prisma,
+} from '@prisma/client';
 import { InitiatePaymentDto } from './dto/initiate-stkPush.dto';
 import { MpesaCallbackDto } from './dto/callback.dto';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { normalizePhone } from 'src/common/utils/phone.utils';
+import { money } from 'src/common/utils/money.utils';
 
 @Injectable()
 export class PaymentsService {
@@ -41,16 +47,17 @@ export class PaymentsService {
       throw new BadRequestException('Goal not active');
     }
 
-    const remaining = Number(goal.targetAmount) - Number(goal.currentAmount);
+    const requestedAmount = money(dto.amount);
+    const remaining = goal.targetAmount.minus(goal.currentAmount);
 
-    if (remaining <= 0) {
+    if (remaining.lte(0)) {
       throw new BadRequestException('Goal already completed');
     }
 
-    const amount = Math.min(dto.amount, remaining);
+    const amount = Prisma.Decimal.min(requestedAmount, remaining);
 
     const stk = await this.mpesa.stkPush({
-      amount,
+      amount: amount.toNumber(),
       phone: requestPhone,
     });
 
@@ -62,7 +69,7 @@ export class PaymentsService {
       data: {
         userId,
         goalId: dto.goalId,
-        amount: amount.toString(),
+        amount: amount,
         phone: requestPhone,
         status: PaymentStatus.PENDING,
         merchantRequestId: stk.MerchantRequestID,
@@ -71,10 +78,9 @@ export class PaymentsService {
     });
 
     return {
-      message:
-        amount < dto.amount
-          ? `Only KES ${amount} required to complete goal`
-          : 'STK Push sent',
+      message: amount.lt(requestedAmount)
+        ? `Only KES ${amount.toFixed(2)} required to complete goal`
+        : 'STK Push sent',
       data: payment,
     };
   }
@@ -151,7 +157,7 @@ export class PaymentsService {
           payment.userId,
           {
             goalId: payment.goalId,
-            amount: Number(payment.amount),
+            amount: payment.amount.toNumber(),
           },
           String(receipt),
           tx,
@@ -176,7 +182,7 @@ export class PaymentsService {
         result.updatedPayment.userId,
         NotificationType.DEPOSIT_SUCCESS,
         'Deposit successful',
-        `Kes ${Number(result.updatedPayment.amount)} has been added to ${goal?.name}.`,
+        `Kes ${result.updatedPayment.amount.toFixed(2)} has been added to ${goal?.name}.`,
       );
 
       return {

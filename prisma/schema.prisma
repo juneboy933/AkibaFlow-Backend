@@ -15,6 +15,7 @@ enum GoalStatus {
   ACTIVE
   MATURED
   CLOSED
+  COMPLETED
 }
 
 enum PlanFrequency {
@@ -131,7 +132,7 @@ model Transaction {
   type   TransactionType
   status TransactionStatus @default(PENDING)
 
-  reference String?
+  reference String? @unique
 
   payment Payment?
 

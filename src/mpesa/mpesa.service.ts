@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { MpesaStkDto } from './dto/mpesa.dto';
 import axios from 'axios';
 import { normalizePhone } from 'src/common/utils/phone.utils';
+import { money } from 'src/common/utils/money.utils';
 
 type MpesaStkPushResponse = {
   MerchantRequestID: string;
@@ -85,6 +86,7 @@ export class MpesaService {
     const callbackUrl = process.env.MPESA_CALLBACK_URL!;
 
     const phone = normalizePhone(dto.phone);
+    const amount = money(dto.amount);
 
     try {
       const res = await firstValueFrom(
@@ -95,7 +97,7 @@ export class MpesaService {
             Password: password,
             Timestamp: timestamp,
             TransactionType: 'CustomerPayBillOnline',
-            Amount: dto.amount,
+            Amount: amount.toNumber(),
             PartyA: phone,
             PartyB: shortcode,
             PhoneNumber: phone,

@@ -11,11 +11,17 @@ import {
   GoalStatus,
   TransactionStatus,
   TransactionType,
+  NotificationType,
 } from '@prisma/client';
+import { money, percentage } from 'src/common/utils/money.utils';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class TransactionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notification: NotificationsService,
+  ) {}
 
   async createDeposit(
     userId: string,
@@ -39,15 +45,23 @@ export class TransactionsService {
         throw new BadRequestException('Goal is not active');
       }
 
-      const currentAmount = Number(existingGoal.currentAmount);
-      const targetAmount = Number(existingGoal.targetAmount);
-      const remainingAmount = targetAmount - currentAmount;
+      if (existingGoal.currentAmount.gte(existingGoal.targetAmount)) {
+        throw new BadRequestException('Goal already completed');
+      }
 
-      if (remainingAmount <= 0) {
+      const currentAmount = existingGoal.currentAmount;
+      const targetAmount = existingGoal.targetAmount;
+      const remainingAmount = targetAmount.minus(currentAmount);
+
+      if (remainingAmount.lte(0)) {
         throw new BadRequestException('Goal has already reached its target');
       }
 
-      const depositAmount = Math.min(dto.amount, remainingAmount);
+      const requestedAmount = money(dto.amount);
+      const depositAmount = Prisma.Decimal.min(
+        requestedAmount,
+        remainingAmount,
+      );
 
       const depositTx = await client.transaction.create({
         data: {
@@ -71,24 +85,18 @@ export class TransactionsService {
         },
       });
 
-      const completionPercentage = Math.min(
-        Math.floor(
-          (Number(updatedGoal.currentAmount) /
-            Number(updatedGoal.targetAmount)) *
-            100,
-        ),
-        100,
+      const completionPercentage = percentage(
+        updatedGoal.currentAmount,
+        updatedGoal.targetAmount,
       );
 
-      if (
-        Number(updatedGoal.currentAmount) >= Number(updatedGoal.targetAmount)
-      ) {
+      if (updatedGoal.currentAmount.gte(updatedGoal.targetAmount)) {
         await client.goal.update({
           where: {
             id: dto.goalId,
           },
           data: {
-            status: GoalStatus.MATURED,
+            status: GoalStatus.COMPLETED,
           },
         });
       }
@@ -110,10 +118,9 @@ export class TransactionsService {
       });
 
       return {
-        message:
-          depositAmount < dto.amount
-            ? `Goal completed. Only KES ${depositAmount} was deposited.`
-            : 'Deposit successful',
+        message: depositAmount.lt(requestedAmount)
+          ? `Goal completed. Only KES ${depositAmount.toFixed(2)} was deposited.`
+          : 'Deposit successful',
         data: {
           transaction: depositTx,
           depositedAmount: depositAmount,
@@ -139,26 +146,28 @@ export class TransactionsService {
 
     if (!existingGoal) throw new NotFoundException('Goal not found');
 
-    // Check if the goal is matured
-    if (existingGoal.status !== GoalStatus.MATURED) {
-      throw new BadRequestException('Goal is not matured yet');
+    const isMaturedByTime = existingGoal.maturityDate <= new Date();
+
+    const isWithdrawableStatus =
+      existingGoal.status === GoalStatus.MATURED ||
+      existingGoal.status === GoalStatus.COMPLETED;
+
+    if (!isMaturedByTime || !isWithdrawableStatus) {
+      throw new BadRequestException('Goal not withdrawable yet');
     }
 
-    if (existingGoal.maturityDate > new Date()) {
-      throw new BadRequestException('Goal has not matured yet');
-    }
+    const withdrawAmount = existingGoal.currentAmount;
 
-    // Check if the goal has sufficient funds
-    if (Number(existingGoal.currentAmount) < dto.amount)
-      throw new BadRequestException('Insufficient funds');
+    if (withdrawAmount.isZero())
+      throw new BadRequestException('No funds available.');
 
     // Create a withdrawal transaction
-    return await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const withdrawTx = await tx.transaction.create({
         data: {
           userId,
           goalId: dto.goalId,
-          amount: dto.amount,
+          amount: withdrawAmount,
           type: TransactionType.WITHDRAW,
           status: TransactionStatus.SUCCESS,
         },
@@ -167,34 +176,17 @@ export class TransactionsService {
       // Update the goal's current amount
       const updatedGoal = await tx.goal.update({
         where: { id: dto.goalId },
-        data: { currentAmount: { decrement: dto.amount } },
+        data: {
+          currentAmount: money(0),
+          status: GoalStatus.CLOSED,
+        },
       });
-
-      const completionPercentage = Math.max(
-        0,
-        Math.floor(
-          (Number(updatedGoal.currentAmount) /
-            Number(updatedGoal.targetAmount)) *
-            100,
-        ),
-      );
-
-      if (Number(updatedGoal.currentAmount) === 0) {
-        await tx.goal.update({
-          where: {
-            id: dto.goalId,
-          },
-          data: {
-            status: GoalStatus.CLOSED,
-          },
-        });
-      }
 
       await tx.goalAnalytics.update({
         where: { goalId: dto.goalId },
         data: {
-          actualAmount: { decrement: dto.amount },
-          completionPercentage,
+          actualAmount: money(0),
+          completionPercentage: 0,
         },
       });
 
@@ -207,6 +199,15 @@ export class TransactionsService {
         },
       };
     });
+
+    await this.notification.createNotification(
+      userId,
+      NotificationType.WITHDRAWAL_SUCCESS,
+      'Withdrawal successfull',
+      `KES ${withdrawAmount.toFixed(2)} has been withdrawn.`,
+    );
+
+    return result;
   }
 
   async getTransactions(userId: string) {
