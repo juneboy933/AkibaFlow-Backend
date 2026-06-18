@@ -104,9 +104,7 @@ export class TransactionsService {
       await client.goalAnalytics.upsert({
         where: { goalId: dto.goalId },
         update: {
-          actualAmount: {
-            increment: depositAmount,
-          },
+          actualAmount: updatedGoal.currentAmount,
           completionPercentage,
         },
         create: {

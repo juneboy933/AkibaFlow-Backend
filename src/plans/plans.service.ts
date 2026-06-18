@@ -261,9 +261,12 @@ export class PlansService {
       throw new NotFoundException('Saving plan not found');
     }
 
-    await this.prisma.savingPlan.delete({
+    await this.prisma.savingPlan.update({
       where: {
         goalId,
+      },
+      data: {
+        isActive: false,
       },
     });
 
