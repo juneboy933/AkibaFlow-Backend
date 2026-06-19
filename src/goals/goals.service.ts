@@ -1,12 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { GoalStatus } from '@prisma/client';
+import { LoggerService } from 'src/logger/logger.service';
 
 @Injectable()
 export class GoalsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly logger: LoggerService,
+  ) {}
 
   async createGoal(userId: string, dto: CreateGoalDto) {
     const maturityDate = new Date();
@@ -33,6 +41,8 @@ export class GoalsService {
         },
       });
 
+      this.logger.log(`User ${userId} created goal ${goal.id}`);
+
       return {
         message: 'Goal created successfully',
         data: goal,
@@ -40,11 +50,13 @@ export class GoalsService {
     });
   }
 
-  async getGoals(userId: string) {
+  async getGoals(userId: string, page = 1, limit = 20) {
     const goals = await this.prisma.goal.findMany({
       where: { userId },
       include: { analytics: true },
       orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
     return {
       message: 'Goals retrieved successfully',
@@ -84,10 +96,15 @@ export class GoalsService {
 
   async closeGoal(userId: string, goalId: string) {
     const goal = await this.getGoalById(userId, goalId);
+    if (goal.data.status === GoalStatus.ACTIVE && goal.data.currentAmount.gt(0))
+      throw new BadRequestException('Cannot close an active funded goal.');
+
     const closedGoal = await this.prisma.goal.update({
       where: { id: goal.data.id },
       data: { status: GoalStatus.CLOSED },
     });
+
+    this.logger.log(`User ${userId} closed goal ${goalId}`);
     return {
       message: 'Goal closed successfully',
       data: closedGoal,

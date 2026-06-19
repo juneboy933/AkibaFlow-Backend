@@ -9,7 +9,7 @@ import { Request } from 'express';
 import { AuthService } from 'src/auth/auth.service';
 
 interface JwtPayload {
-  id: string;
+  sub: string;
   role: UserRole;
 }
 

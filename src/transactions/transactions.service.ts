@@ -15,12 +15,14 @@ import {
 } from '@prisma/client';
 import { money, percentage } from 'src/common/utils/money.utils';
 import { NotificationsService } from 'src/notifications/notifications.service';
+import { LoggerService } from 'src/logger/logger.service';
 
 @Injectable()
 export class TransactionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notification: NotificationsService,
+    private readonly logger: LoggerService,
   ) {}
 
   async createDeposit(
@@ -30,6 +32,8 @@ export class TransactionsService {
     tx?: Prisma.TransactionClient,
   ) {
     const run = async (client: Prisma.TransactionClient) => {
+      await client.$queryRaw`SELECT * FROM "Goal" WHERE id = ${dto.goalId} FOR UPDATE`;
+
       const existingGoal = await client.goal.findFirst({
         where: {
           id: dto.goalId,
@@ -115,6 +119,13 @@ export class TransactionsService {
         },
       });
 
+      await this.notification.createNotification(
+        userId,
+        NotificationType.DEPOSIT_SUCCESS,
+        'Deposit successful',
+        `KES ${depositAmount.toFixed(2)} deposited successfully.`,
+      );
+
       return {
         message: depositAmount.lt(requestedAmount)
           ? `Goal completed. Only KES ${depositAmount.toFixed(2)} was deposited.`
@@ -133,34 +144,34 @@ export class TransactionsService {
       return run(tx);
     }
 
+    this.logger.log(`User ${userId} deposited KES ${dto.amount}`);
     return this.prisma.$transaction(run);
   }
 
   async createWithdraw(userId: string, dto: CreateWithdrawDto) {
-    // Check if the goal exists and belongs to the user
-    const existingGoal = await this.prisma.goal.findFirst({
-      where: { id: dto.goalId, userId },
-    });
-
-    if (!existingGoal) throw new NotFoundException('Goal not found');
-
-    const isMaturedByTime = existingGoal.maturityDate <= new Date();
-
-    const isWithdrawableStatus =
-      existingGoal.status === GoalStatus.MATURED ||
-      existingGoal.status === GoalStatus.COMPLETED;
-
-    if (!isMaturedByTime || !isWithdrawableStatus) {
-      throw new BadRequestException('Goal not withdrawable yet');
-    }
-
-    const withdrawAmount = existingGoal.currentAmount;
-
-    if (withdrawAmount.isZero())
-      throw new BadRequestException('No funds available.');
-
     // Create a withdrawal transaction
     const result = await this.prisma.$transaction(async (tx) => {
+      // Check if the goal exists and belongs to the user
+      const existingGoal = await tx.goal.findFirst({
+        where: { id: dto.goalId, userId },
+      });
+
+      if (!existingGoal) throw new NotFoundException('Goal not found');
+
+      const isMaturedByTime = existingGoal.maturityDate <= new Date();
+
+      const isWithdrawableStatus =
+        existingGoal.status === GoalStatus.MATURED ||
+        existingGoal.status === GoalStatus.COMPLETED;
+
+      if (!isMaturedByTime || !isWithdrawableStatus) {
+        throw new BadRequestException('Goal not withdrawable yet');
+      }
+
+      const withdrawAmount = existingGoal.currentAmount;
+
+      if (withdrawAmount.isZero())
+        throw new BadRequestException('No funds available.');
       const withdrawTx = await tx.transaction.create({
         data: {
           userId,
@@ -202,13 +213,17 @@ export class TransactionsService {
       userId,
       NotificationType.WITHDRAWAL_SUCCESS,
       'Withdrawal successfull',
-      `KES ${withdrawAmount.toFixed(2)} has been withdrawn.`,
+      `KES ${result.data.currentAmount.toFixed(2)} has been withdrawn.`,
+    );
+
+    this.logger.log(
+      `User ${userId} withdraws KES ${result.data.currentAmount.toFixed(2)}`,
     );
 
     return result;
   }
 
-  async getTransactions(userId: string) {
+  async getTransactions(userId: string, page = 1, limit = 20) {
     const result = await this.prisma.transaction.findMany({
       where: { userId },
       include: {
@@ -220,6 +235,8 @@ export class TransactionsService {
         },
       },
       orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     return {

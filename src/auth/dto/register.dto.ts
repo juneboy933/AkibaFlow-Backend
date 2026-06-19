@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, Matches, MinLength } from 'class-validator';
+import { IsString, IsNotEmpty, Matches } from 'class-validator';
 
 export class CreateRegisterDto {
   @IsString()
@@ -14,6 +14,8 @@ export class CreateRegisterDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(6, { message: 'Password must be at least 6 characters long' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/, {
+    message: 'Password must contain uppercase, lowercase and number',
+  })
   password!: string;
 }

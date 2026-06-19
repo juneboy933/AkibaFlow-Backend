@@ -4,13 +4,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { LoggerModule } from 'src/logger/logger.module';
 
 @Module({
   imports: [
     PrismaModule,
 
     JwtModule.registerAsync({
-      imports: [ConfigModule],
+      imports: [ConfigModule, LoggerModule],
 
       inject: [ConfigService],
 

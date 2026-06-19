@@ -17,6 +17,7 @@ import { MpesaCallbackDto } from './dto/callback.dto';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { normalizePhone } from 'src/common/utils/phone.utils';
 import { money } from 'src/common/utils/money.utils';
+import { LoggerService } from 'src/logger/logger.service';
 
 @Injectable()
 export class PaymentsService {
@@ -25,6 +26,7 @@ export class PaymentsService {
     private readonly transaction: TransactionsService,
     private readonly mpesa: MpesaService,
     private readonly notification: NotificationsService,
+    private readonly logger: LoggerService,
   ) {}
 
   async initiatePayment(userId: string, dto: InitiatePaymentDto) {
@@ -89,6 +91,8 @@ export class PaymentsService {
     const cb = dto.Body.stkCallback;
     const checkoutId = cb.CheckoutRequestID;
 
+    this.logger.log(`Processing M-Pesa callback | checkoutId=${checkoutId}`);
+
     const payment = await this.prisma.payment.findUnique({
       where: { checkoutRequestId: checkoutId },
     });
@@ -116,6 +120,10 @@ export class PaymentsService {
         'Your Mpesa deposit could not be completed.',
       );
 
+      this.logger.error(
+        `Deposit failed | payment=${payment.id} | user=${payment.userId} | reason=${cb.ResultDesc}`,
+      );
+
       return { message: 'Payment failed' };
     }
 
@@ -124,7 +132,27 @@ export class PaymentsService {
     )?.Value;
 
     if (!receipt) {
-      throw new BadRequestException('Missing receipt number');
+      // Treat missing receipt as a failed payment and record the failure
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, status: { not: PaymentStatus.SUCCESS } },
+        data: {
+          status: PaymentStatus.FAILED,
+          resultDescription: 'Missing receipt number in callback',
+        },
+      });
+
+      await this.notification.createNotification(
+        payment.userId,
+        NotificationType.FAILED_DEPOSIT,
+        'Deposit failed',
+        'Your Mpesa deposit could not be completed (missing receipt).',
+      );
+
+      this.logger.error(
+        `Missing receipt | payment=${payment.id} | user=${payment.userId} | checkoutId=${checkoutId}`,
+      );
+
+      return { message: 'Missing receipt number' };
     }
 
     // atomic lock (prevents double processing)
@@ -185,21 +213,47 @@ export class PaymentsService {
         `Kes ${result.updatedPayment.amount.toFixed(2)} has been added to ${goal?.name}.`,
       );
 
+      this.logger.log(
+        `Deposit succeeded | payment=${payment.id} | user=${payment.userId} | goal=${goal?.id} | amount=${result.updatedPayment.amount.toFixed(2)}`,
+      );
+
       return {
         message: 'Payment successful',
         data: result.updatedPayment,
       };
     } catch (err) {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: PaymentStatus.FAILED },
-      });
+      // Ensure payment is marked as FAILED unless it's already SUCCESS
+      try {
+        await this.prisma.payment.updateMany({
+          where: { id: payment.id, status: { not: PaymentStatus.SUCCESS } },
+          data: {
+            status: PaymentStatus.FAILED,
+            resultDescription: String(
+              (err as Error)?.message ?? 'Processing error',
+            ),
+          },
+        });
+      } catch (uErr) {
+        this.logger.error(
+          `Failed to update payment status to FAILED | payment=${payment.id} | err=${(uErr as Error).message}`,
+        );
+      }
 
-      await this.notification.createNotification(
-        payment.userId,
-        NotificationType.FAILED_DEPOSIT,
-        'Deposit failed',
-        'Your Mpesa deposit could not be completed.',
+      try {
+        await this.notification.createNotification(
+          payment.userId,
+          NotificationType.FAILED_DEPOSIT,
+          'Deposit failed',
+          'Your Mpesa deposit could not be completed.',
+        );
+      } catch (nErr) {
+        this.logger.error(
+          `Failed to send failure notification | payment=${payment.id} | err=${(nErr as Error).message}`,
+        );
+      }
+
+      this.logger.error(
+        `Deposit processing error | payment=${payment.id} | user=${payment.userId} | checkoutId=${checkoutId} | err=${(err as Error).stack ?? (err as Error).message}`,
       );
 
       throw err;

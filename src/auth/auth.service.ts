@@ -9,9 +9,10 @@ import { CreateLoginDto } from './dto/login.dto';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
 import argon2 from 'argon2';
+import { LoggerService } from 'src/logger/logger.service';
 
 interface User {
-  id: string;
+  sub: string;
   role: UserRole;
 }
 
@@ -20,6 +21,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly logger: LoggerService,
   ) {}
 
   async registerUser(dto: CreateRegisterDto) {
@@ -45,6 +47,7 @@ export class AuthService {
       },
     });
 
+    this.logger.log(`User ${newUser.id} registered successfully`);
     // Return a success message and the created user data
     return {
       message: 'User registered successfully',
@@ -80,6 +83,7 @@ export class AuthService {
     // Provide access token
     const token = await this.generateToken(existingUser);
 
+    this.logger.log(`User ${existingUser.id} logged in successfully.`);
     return {
       message: 'User logged in successfully',
       token,
@@ -90,7 +94,7 @@ export class AuthService {
     };
   }
 
-  async generateToken(user: User) {
+  async generateToken(user: { id: string; role: UserRole }) {
     const payload = {
       sub: user.id,
       role: user.role,

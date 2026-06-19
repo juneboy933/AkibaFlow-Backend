@@ -5,6 +5,7 @@ import { MpesaStkDto } from './dto/mpesa.dto';
 import axios from 'axios';
 import { normalizePhone } from 'src/common/utils/phone.utils';
 import { money } from 'src/common/utils/money.utils';
+import { ConfigService } from '@nestjs/config';
 
 type MpesaStkPushResponse = {
   MerchantRequestID: string;
@@ -20,7 +21,10 @@ interface DarajaErrorResponse {
 
 @Injectable()
 export class MpesaService {
-  constructor(private readonly http: HttpService) {}
+  constructor(
+    private readonly http: HttpService,
+    private readonly config: ConfigService,
+  ) {}
 
   private generateTimestamp(): string {
     const d = new Date();
@@ -35,8 +39,8 @@ export class MpesaService {
   }
 
   async generateToken(): Promise<string> {
-    const key = process.env.MPESA_CONSUMER_KEY;
-    const secret = process.env.MPESA_CONSUMER_SECRET;
+    const key = this.config.get<string>('MPESA_CONSUMER_KEY');
+    const secret = this.config.get<string>('MPESA_CONSUMER_SECRET');
 
     if (!key || !secret) {
       throw new BadGatewayException('Missing M-Pesa credentials');
@@ -47,7 +51,7 @@ export class MpesaService {
     try {
       const res = await firstValueFrom(
         this.http.get<{ access_token: string }>(
-          `${process.env.MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+          `${this.config.get<string>('MPESA_BASE_URL')}/oauth/v1/generate?grant_type=client_credentials`,
           {
             headers: { Authorization: `Basic ${auth}` },
             timeout: 10000,
@@ -62,8 +66,8 @@ export class MpesaService {
   }
 
   private generatePassword() {
-    const shortcode = process.env.MPESA_SHORTCODE;
-    const passkey = process.env.MPESA_PASSKEY;
+    const shortcode = this.config.get<string>('MPESA_SHORTCODE');
+    const passkey = this.config.get<string>('MPESA_PASSKEY');
 
     if (!shortcode || !passkey) {
       throw new BadGatewayException('Missing shortcode or passkey');
@@ -81,9 +85,9 @@ export class MpesaService {
     const token = await this.generateToken();
     const { password, timestamp } = this.generatePassword();
 
-    const baseUrl = process.env.MPESA_BASE_URL!;
-    const shortcode = process.env.MPESA_SHORTCODE!;
-    const callbackUrl = process.env.MPESA_CALLBACK_URL!;
+    const baseUrl = this.config.get<string>('MPESA_BASE_URL')!;
+    const shortcode = this.config.get<string>('MPESA_SHORTCODE')!;
+    const callbackUrl = this.config.get<string>('MPESA_CALLBACK_URL')!;
 
     const phone = normalizePhone(dto.phone);
     const amount = money(dto.amount);

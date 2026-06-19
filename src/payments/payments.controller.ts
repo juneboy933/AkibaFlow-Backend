@@ -13,10 +13,14 @@ import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
 import { MpesaCallbackDto } from './dto/callback.dto';
 import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
 import { Throttle } from '@nestjs/throttler';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly payment: PaymentsService) {}
+  constructor(
+    private readonly payment: PaymentsService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Post('stk-push')
   @UseGuards(JwtGuard)
@@ -33,7 +37,7 @@ export class PaymentsController {
     @Headers('x-callback-secret') secret: string,
     @Body() dto: MpesaCallbackDto,
   ) {
-    if (secret !== process.env.MPESA_CALLBACK_SECRET) {
+    if (secret !== this.config.get<string>('MPESA_CALLBACK_SECRET')) {
       throw new UnauthorizedException('Invalid callback');
     }
     return this.payment.handleCallback(dto);

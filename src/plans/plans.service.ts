@@ -14,6 +14,7 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { GoalsService } from 'src/goals/goals.service';
+import { LoggerService } from 'src/logger/logger.service';
 
 @Injectable()
 export class PlansService {
@@ -21,6 +22,7 @@ export class PlansService {
     private readonly prisma: PrismaService,
     private readonly notification: NotificationsService,
     private readonly goalService: GoalsService,
+    private readonly logger: LoggerService,
   ) {}
 
   private async getActiveGoal(userId: string, goalId: string) {
@@ -140,6 +142,7 @@ export class PlansService {
       },
     });
 
+    this.logger.log(`User ${userId} created plan for goal ${dto.goalId}`);
     return {
       message: 'Saving plan created successfully',
       data: plan,
@@ -177,7 +180,7 @@ export class PlansService {
     };
   }
 
-  async getPlans(userId: string) {
+  async getPlans(userId: string, page = 1, limit = 20) {
     const plans = await this.prisma.savingPlan.findMany({
       where: {
         isActive: true,
@@ -198,6 +201,8 @@ export class PlansService {
       orderBy: {
         createdAt: 'desc',
       },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     return {
@@ -241,6 +246,8 @@ export class PlansService {
       },
     });
 
+    this.logger.log(`User ${userId} updated plan for goal ${goalId}`);
+
     return {
       message: 'Saving plan updated successfully',
       data: updatedPlan,
@@ -263,12 +270,14 @@ export class PlansService {
 
     await this.prisma.savingPlan.update({
       where: {
-        goalId,
+        id: plan.id,
       },
       data: {
         isActive: false,
       },
     });
+
+    this.logger.log(`User ${userId} deleted plan for goal ${goalId}`);
 
     return {
       message: 'Saving plan deleted successfully',
