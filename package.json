@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
@@ -31,7 +32,9 @@
     "@prisma/client": "^7.8.0",
     "argon2": "^0.44.0",
     "axios": "^1.17.0",
+    "bullmq": "^5.79.0",
     "decimal.js": "^10.6.0",
+    "ioredis": "^5.11.1",
     "nest-winston": "^1.10.2",
     "pg": "^8.21.0",
     "reflect-metadata": "^0.2.2",
@@ -77,6 +80,9 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/$1"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

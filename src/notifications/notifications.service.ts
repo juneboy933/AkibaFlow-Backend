@@ -35,9 +35,19 @@ export class NotificationsService {
       take: limit,
     });
 
+    const total = await this.prisma.notification.count({
+      where: { userId },
+    });
+
     return {
       message: 'Notifications retrieved successfully',
       data: notifications,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 

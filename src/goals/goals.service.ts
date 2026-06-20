@@ -41,7 +41,10 @@ export class GoalsService {
         },
       });
 
-      this.logger.log(`User ${userId} created goal ${goal.id}`);
+      this.logger.log(
+        `User ${userId} created goal ${goal.id}`,
+        GoalsService.name,
+      );
 
       return {
         message: 'Goal created successfully',
@@ -58,9 +61,20 @@ export class GoalsService {
       skip: (page - 1) * limit,
       take: limit,
     });
+
+    const total = await this.prisma.goal.count({
+      where: { userId },
+    });
+
     return {
       message: 'Goals retrieved successfully',
       data: goals,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -104,7 +118,8 @@ export class GoalsService {
       data: { status: GoalStatus.CLOSED },
     });
 
-    this.logger.log(`User ${userId} closed goal ${goalId}`);
+    this.logger.log(`User ${userId} closed goal ${goalId}`, GoalsService.name);
+
     return {
       message: 'Goal closed successfully',
       data: closedGoal,

@@ -10,6 +10,7 @@ import {
 import { NotificationsService } from './notifications.service';
 import { JwtGuard } from 'src/auth/guards/jwt/jwt.guard';
 import type { AuthenticatedRequest } from 'src/common/interfaces/authenticated-user.interface';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 @UseGuards(JwtGuard)
 @Controller('notifications')
@@ -19,13 +20,12 @@ export class NotificationsController {
   @Get()
   getNotifications(
     @Req() req: AuthenticatedRequest,
-    @Query('page') page = 1,
-    @Query('limit') limit = 20,
+    @Query() query: PaginationDto,
   ) {
     return this.notification.getNotifications(
       req.user.sub,
-      Number(page),
-      Number(limit),
+      query.page,
+      query.limit,
     );
   }
 

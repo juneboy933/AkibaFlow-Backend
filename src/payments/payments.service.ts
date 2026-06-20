@@ -40,58 +40,114 @@ export class PaymentsService {
       throw new BadRequestException('Phone number mismatch');
     }
 
-    const goal = await this.prisma.goal.findFirst({
-      where: { id: dto.goalId, userId },
+    const pendingAttempt = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT * FROM "Goal" WHERE id = ${dto.goalId} FOR UPDATE`;
+
+      const goal = await tx.goal.findFirst({
+        where: { id: dto.goalId, userId },
+      });
+
+      if (!goal) throw new NotFoundException('Goal not found');
+      if (goal.status !== GoalStatus.ACTIVE) {
+        throw new BadRequestException('Goal not active');
+      }
+
+      const activePayment = await tx.payment.findFirst({
+        where: {
+          goalId: dto.goalId,
+          userId,
+          status: {
+            in: [
+              PaymentStatus.PENDING,
+              PaymentStatus.PROCESSING,
+              PaymentStatus.PAID_UNALLOCATED,
+            ],
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (activePayment) {
+        throw new BadRequestException(
+          'This goal already has a payment being processed',
+        );
+      }
+
+      const requestedAmount = money(dto.amount);
+      const remaining = goal.targetAmount.minus(goal.currentAmount);
+
+      if (remaining.lte(0)) {
+        throw new BadRequestException('Goal already completed');
+      }
+
+      const amount = Prisma.Decimal.min(requestedAmount, remaining);
+
+      const payment = await tx.payment.create({
+        data: {
+          userId,
+          goalId: dto.goalId,
+          amount,
+          phone: requestPhone,
+          status: PaymentStatus.PENDING,
+        },
+      });
+
+      return { amount, payment, requestedAmount };
     });
 
-    if (!goal) throw new NotFoundException('Goal not found');
-    if (goal.status !== GoalStatus.ACTIVE) {
-      throw new BadRequestException('Goal not active');
-    }
-
-    const requestedAmount = money(dto.amount);
-    const remaining = goal.targetAmount.minus(goal.currentAmount);
-
-    if (remaining.lte(0)) {
-      throw new BadRequestException('Goal already completed');
-    }
-
-    const amount = Prisma.Decimal.min(requestedAmount, remaining);
-
-    const stk = await this.mpesa.stkPush({
-      amount: amount.toNumber(),
-      phone: requestPhone,
-    });
-
-    if (stk.ResponseCode !== '0') {
-      throw new BadRequestException(stk.ResponseDescription);
-    }
-
-    const payment = await this.prisma.payment.create({
-      data: {
-        userId,
-        goalId: dto.goalId,
-        amount: amount,
+    try {
+      const stk = await this.mpesa.stkPush({
+        amount: pendingAttempt.amount.toNumber(),
         phone: requestPhone,
-        status: PaymentStatus.PENDING,
-        merchantRequestId: stk.MerchantRequestID,
-        checkoutRequestId: stk.CheckoutRequestID,
-      },
-    });
+      });
 
-    return {
-      message: amount.lt(requestedAmount)
-        ? `Only KES ${amount.toFixed(2)} required to complete goal`
-        : 'STK Push sent',
-      data: payment,
-    };
+      if (stk.ResponseCode !== '0') {
+        await this.prisma.payment.update({
+          where: { id: pendingAttempt.payment.id },
+          data: {
+            status: PaymentStatus.FAILED,
+            resultDescription: stk.ResponseDescription,
+          },
+        });
+
+        throw new BadRequestException(stk.ResponseDescription);
+      }
+
+      const updatedPayment = await this.prisma.payment.update({
+        where: { id: pendingAttempt.payment.id },
+        data: {
+          merchantRequestId: stk.MerchantRequestID,
+          checkoutRequestId: stk.CheckoutRequestID,
+        },
+      });
+
+      return {
+        message: pendingAttempt.amount.lt(pendingAttempt.requestedAmount)
+          ? `Only KES ${pendingAttempt.amount.toFixed(2)} required to complete goal`
+          : 'STK Push sent',
+        data: updatedPayment,
+      };
+    } catch (err) {
+      await this.prisma.payment.updateMany({
+        where: { id: pendingAttempt.payment.id, status: PaymentStatus.PENDING },
+        data: {
+          status: PaymentStatus.FAILED,
+          resultDescription: (err as Error).message,
+        },
+      });
+
+      throw err;
+    }
   }
 
   async handleCallback(dto: MpesaCallbackDto) {
     const cb = dto.Body.stkCallback;
     const checkoutId = cb.CheckoutRequestID;
 
-    this.logger.log(`Processing M-Pesa callback | checkoutId=${checkoutId}`);
+    this.logger.log(
+      `Processing M-Pesa callback | checkoutId=${checkoutId}`,
+      PaymentsService.name,
+    );
 
     const payment = await this.prisma.payment.findUnique({
       where: { checkoutRequestId: checkoutId },
@@ -104,9 +160,18 @@ export class PaymentsService {
       return { message: 'Already processed' };
     }
 
+    if (payment.status === PaymentStatus.PAID_UNALLOCATED) {
+      return { message: 'Payment awaiting reconciliation' };
+    }
+
     if (cb.ResultCode !== 0) {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
+      await this.prisma.payment.updateMany({
+        where: {
+          id: payment.id,
+          status: {
+            not: PaymentStatus.SUCCESS,
+          },
+        },
         data: {
           status: PaymentStatus.FAILED,
           resultDescription: cb.ResultDesc,
@@ -122,6 +187,7 @@ export class PaymentsService {
 
       this.logger.error(
         `Deposit failed | payment=${payment.id} | user=${payment.userId} | reason=${cb.ResultDesc}`,
+        PaymentsService.name,
       );
 
       return { message: 'Payment failed' };
@@ -129,6 +195,14 @@ export class PaymentsService {
 
     const receipt = cb.CallbackMetadata?.Item?.find(
       (i) => i.Name === 'MpesaReceiptNumber',
+    )?.Value;
+
+    const callbackAmount = cb.CallbackMetadata?.Item?.find(
+      (i) => i.Name === 'Amount',
+    )?.Value;
+
+    const callbackPhone = cb.CallbackMetadata?.Item?.find(
+      (i) => i.Name === 'PhoneNumber',
     )?.Value;
 
     if (!receipt) {
@@ -150,9 +224,43 @@ export class PaymentsService {
 
       this.logger.error(
         `Missing receipt | payment=${payment.id} | user=${payment.userId} | checkoutId=${checkoutId}`,
+        PaymentsService.name,
       );
 
       return { message: 'Missing receipt number' };
+    }
+
+    const amountMatches =
+      callbackAmount === undefined ||
+      money(callbackAmount).equals(payment.amount);
+
+    const phoneMatches =
+      callbackPhone === undefined ||
+      String(callbackPhone) === String(payment.phone);
+
+    if (!amountMatches || !phoneMatches) {
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, status: { not: PaymentStatus.SUCCESS } },
+        data: {
+          status: PaymentStatus.PAID_UNALLOCATED,
+          mpesaReceiptNumber: String(receipt),
+          resultDescription: `Callback metadata mismatch: amount=${callbackAmount}, phone=${callbackPhone}`,
+        },
+      });
+
+      await this.notification.createNotification(
+        payment.userId,
+        NotificationType.FAILED_DEPOSIT,
+        'Deposit needs review',
+        'Your M-Pesa payment was received but needs review before being added to your goal.',
+      );
+
+      this.logger.error(
+        `Payment metadata mismatch | payment=${payment.id} | expectedAmount=${payment.amount.toFixed(2)} | callbackAmount=${callbackAmount} | expectedPhone=${payment.phone} | callbackPhone=${callbackPhone}`,
+        PaymentsService.name,
+      );
+
+      return { message: 'Payment awaiting reconciliation' };
     }
 
     // atomic lock (prevents double processing)
@@ -215,6 +323,7 @@ export class PaymentsService {
 
       this.logger.log(
         `Deposit succeeded | payment=${payment.id} | user=${payment.userId} | goal=${goal?.id} | amount=${result.updatedPayment.amount.toFixed(2)}`,
+        PaymentsService.name,
       );
 
       return {
@@ -222,12 +331,13 @@ export class PaymentsService {
         data: result.updatedPayment,
       };
     } catch (err) {
-      // Ensure payment is marked as FAILED unless it's already SUCCESS
+      // A successful M-Pesa callback with a receipt means money moved. If
+      // allocation fails, keep it reconcilable instead of calling it failed.
       try {
         await this.prisma.payment.updateMany({
           where: { id: payment.id, status: { not: PaymentStatus.SUCCESS } },
           data: {
-            status: PaymentStatus.FAILED,
+            status: PaymentStatus.PAID_UNALLOCATED,
             resultDescription: String(
               (err as Error)?.message ?? 'Processing error',
             ),
@@ -235,7 +345,8 @@ export class PaymentsService {
         });
       } catch (uErr) {
         this.logger.error(
-          `Failed to update payment status to FAILED | payment=${payment.id} | err=${(uErr as Error).message}`,
+          `Failed to mark payment as unallocated | payment=${payment.id} | err=${(uErr as Error).message}`,
+          PaymentsService.name,
         );
       }
 
@@ -243,17 +354,19 @@ export class PaymentsService {
         await this.notification.createNotification(
           payment.userId,
           NotificationType.FAILED_DEPOSIT,
-          'Deposit failed',
-          'Your Mpesa deposit could not be completed.',
+          'Deposit needs review',
+          'Your M-Pesa payment was received but needs review before being added to your goal.',
         );
       } catch (nErr) {
         this.logger.error(
           `Failed to send failure notification | payment=${payment.id} | err=${(nErr as Error).message}`,
+          PaymentsService.name,
         );
       }
 
       this.logger.error(
         `Deposit processing error | payment=${payment.id} | user=${payment.userId} | checkoutId=${checkoutId} | err=${(err as Error).stack ?? (err as Error).message}`,
+        PaymentsService.name,
       );
 
       throw err;

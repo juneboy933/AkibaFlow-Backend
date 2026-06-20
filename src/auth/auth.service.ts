@@ -47,7 +47,10 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`User ${newUser.id} registered successfully`);
+    this.logger.log(
+      `User ${newUser.id} registered successfully`,
+      AuthService.name,
+    );
     // Return a success message and the created user data
     return {
       message: 'User registered successfully',
@@ -83,7 +86,11 @@ export class AuthService {
     // Provide access token
     const token = await this.generateToken(existingUser);
 
-    this.logger.log(`User ${existingUser.id} logged in successfully.`);
+    this.logger.log(
+      `User ${existingUser.id} logged in successfully.`,
+      AuthService.name,
+    );
+
     return {
       message: 'User logged in successfully',
       token,
@@ -107,9 +114,8 @@ export class AuthService {
     try {
       const decoded: User = await this.jwtService.verifyAsync(token);
       return decoded;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : undefined;
-      throw new UnauthorizedException('Invalid token', message);
+    } catch {
+      throw new UnauthorizedException('Invalid token');
     }
   }
 }

@@ -39,6 +39,15 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   PROCESSING
+  PAID_UNALLOCATED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  NEEDS_REVIEW
 }
 
 enum NotificationType {
@@ -46,6 +55,7 @@ enum NotificationType {
   MATURITY
   DEPOSIT_SUCCESS
   WITHDRAWAL_SUCCESS
+  WITHDRAWAL_PENDING
   FAILED_DEPOSIT
   PLAN_CREATED
 }
@@ -62,6 +72,7 @@ model User {
   goals         Goal[]
   transactions  Transaction[]
   payments      Payment[]
+  withdrawals   Withdrawal[]
   notifications Notification[]
 
   createdAt DateTime @default(now())
@@ -90,7 +101,8 @@ model Goal {
   savingsPlan  SavingPlan?
   analytics    GoalAnalytics?
   transactions Transaction[]
-  payments Payment[]
+  payments      Payment[]
+  withdrawals   Withdrawal[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -134,12 +146,48 @@ model Transaction {
 
   reference String? @unique
 
-  payment Payment?
+  payment    Payment?
+  withdrawal Withdrawal?
 
   createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([goalId])
+}
+
+model Withdrawal {
+  id String @id @default(uuid())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  goalId String
+  goal   Goal @relation(fields: [goalId], references: [id])
+
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+
+  amount Decimal @db.Decimal(20, 2)
+  phone  String
+
+  status WithdrawalStatus @default(PENDING)
+
+  originatorConversationId String? @unique
+  conversationId           String? @unique
+  resultCode               Int?
+  resultDescription        String?
+
+  retryCount    Int       @default(0)
+  lastAttemptAt DateTime?
+  processedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([goalId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Payment {

@@ -8,19 +8,26 @@ export class LoggerService {
   constructor() {
     this.logger = winston.createLogger({
       level: 'info',
-      transports: [new winston.transports.Console()],
+      transports: [
+        new winston.transports.Console({
+          format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.json(),
+          ),
+        }),
+      ],
     });
   }
 
-  log(message: string) {
-    this.logger.info(message);
+  log(message: string, context?: string) {
+    this.logger.info({ message, context });
   }
 
-  error(message: string) {
-    this.logger.error(message);
+  error(message: string, context?: string) {
+    this.logger.error({ message, context });
   }
 
-  warn(message: string) {
-    this.logger.warn(message);
+  warn(message: string, context?: string) {
+    this.logger.warn({ message, context });
   }
 }

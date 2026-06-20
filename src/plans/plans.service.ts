@@ -97,27 +97,40 @@ export class PlansService {
   async createPlan(userId: string, dto: CreatePlanDto) {
     const goal = await this.getActiveGoal(userId, dto.goalId);
 
-    const existingPlan = await this.prisma.savingPlan.findFirst({
+    const existingPlan = await this.prisma.savingPlan.findUnique({
       where: {
         goalId: dto.goalId,
-        isActive: true,
       },
     });
 
-    if (existingPlan) {
+    if (existingPlan?.isActive) {
       throw new BadRequestException('Goal already has an active saving plan');
     }
 
     this.validatePlan(goal.data, dto.amount, dto.frequency);
 
-    const plan = await this.prisma.savingPlan.create({
-      data: {
-        goalId: dto.goalId,
-        amount: dto.amount,
-        frequency: dto.frequency,
-        nextContributionDate: this.calculateNextContributionDate(dto.frequency),
-      },
-    });
+    const plan = existingPlan
+      ? await this.prisma.savingPlan.update({
+          where: { goalId: dto.goalId },
+          data: {
+            amount: dto.amount,
+            frequency: dto.frequency,
+            nextContributionDate: this.calculateNextContributionDate(
+              dto.frequency,
+            ),
+            isActive: true,
+          },
+        })
+      : await this.prisma.savingPlan.create({
+          data: {
+            goalId: dto.goalId,
+            amount: dto.amount,
+            frequency: dto.frequency,
+            nextContributionDate: this.calculateNextContributionDate(
+              dto.frequency,
+            ),
+          },
+        });
 
     await this.notification.createNotification(
       userId,
@@ -142,7 +155,11 @@ export class PlansService {
       },
     });
 
-    this.logger.log(`User ${userId} created plan for goal ${dto.goalId}`);
+    this.logger.log(
+      `User ${userId} created plan for goal ${dto.goalId}`,
+      PlansService.name,
+    );
+
     return {
       message: 'Saving plan created successfully',
       data: plan,
@@ -246,7 +263,10 @@ export class PlansService {
       },
     });
 
-    this.logger.log(`User ${userId} updated plan for goal ${goalId}`);
+    this.logger.log(
+      `User ${userId} updated plan for goal ${goalId}`,
+      PlansService.name,
+    );
 
     return {
       message: 'Saving plan updated successfully',
@@ -277,7 +297,10 @@ export class PlansService {
       },
     });
 
-    this.logger.log(`User ${userId} deleted plan for goal ${goalId}`);
+    this.logger.log(
+      `User ${userId} deleted plan for goal ${goalId}`,
+      PlansService.name,
+    );
 
     return {
       message: 'Saving plan deleted successfully',

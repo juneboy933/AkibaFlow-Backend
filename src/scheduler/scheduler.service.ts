@@ -11,7 +11,9 @@ export class SchedulerService {
     private readonly notification: NotificationsService,
   ) {}
 
-  @Cron('0 0 * * *')
+  @Cron('0 0 0 * * *', {
+    timeZone: 'Africa/Nairobi',
+  })
   async markMaturedGoals() {
     const maturedGoals = await this.prisma.goal.findMany({
       where: {

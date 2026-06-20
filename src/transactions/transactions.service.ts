@@ -16,6 +16,7 @@ import {
 import { money, percentage } from 'src/common/utils/money.utils';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { LoggerService } from 'src/logger/logger.service';
+import { normalizePhone } from 'src/common/utils/phone.utils';
 
 @Injectable()
 export class TransactionsService {
@@ -119,13 +120,6 @@ export class TransactionsService {
         },
       });
 
-      await this.notification.createNotification(
-        userId,
-        NotificationType.DEPOSIT_SUCCESS,
-        'Deposit successful',
-        `KES ${depositAmount.toFixed(2)} deposited successfully.`,
-      );
-
       return {
         message: depositAmount.lt(requestedAmount)
           ? `Goal completed. Only KES ${depositAmount.toFixed(2)} was deposited.`
@@ -144,16 +138,29 @@ export class TransactionsService {
       return run(tx);
     }
 
-    this.logger.log(`User ${userId} deposited KES ${dto.amount}`);
-    return this.prisma.$transaction(run);
+    const result = await this.prisma.$transaction(run);
+
+    this.logger.log(
+      `User ${userId} deposited KES ${result.data.depositedAmount.toFixed(2)}`,
+      TransactionsService.name,
+    );
+
+    return result;
   }
 
   async createWithdraw(userId: string, dto: CreateWithdrawDto) {
-    // Create a withdrawal transaction
     const result = await this.prisma.$transaction(async (tx) => {
-      // Check if the goal exists and belongs to the user
+      await tx.$queryRaw`SELECT * FROM "Goal" WHERE id = ${dto.goalId} FOR UPDATE`;
+
       const existingGoal = await tx.goal.findFirst({
         where: { id: dto.goalId, userId },
+        include: {
+          user: {
+            select: {
+              phone: true,
+            },
+          },
+        },
       });
 
       if (!existingGoal) throw new NotFoundException('Goal not found');
@@ -178,11 +185,20 @@ export class TransactionsService {
           goalId: dto.goalId,
           amount: withdrawAmount,
           type: TransactionType.WITHDRAW,
-          status: TransactionStatus.SUCCESS,
+          status: TransactionStatus.PENDING,
         },
       });
 
-      // Update the goal's current amount
+      const withdrawal = await tx.withdrawal.create({
+        data: {
+          userId,
+          goalId: dto.goalId,
+          transactionId: withdrawTx.id,
+          amount: withdrawAmount,
+          phone: normalizePhone(existingGoal.user.phone),
+        },
+      });
+
       const updatedGoal = await tx.goal.update({
         where: { id: dto.goalId },
         data: {
@@ -200,24 +216,28 @@ export class TransactionsService {
       });
 
       return {
-        message: 'Withdrawal successful',
+        message: 'Withdrawal request received',
         data: {
           transaction: withdrawTx,
+          withdrawal,
           currentAmount: updatedGoal.currentAmount,
           targetAmount: updatedGoal.targetAmount,
         },
       };
     });
 
+    // Add withdrawal queue for job processing
+
     await this.notification.createNotification(
       userId,
-      NotificationType.WITHDRAWAL_SUCCESS,
-      'Withdrawal successfull',
-      `KES ${result.data.currentAmount.toFixed(2)} has been withdrawn.`,
+      NotificationType.WITHDRAWAL_PENDING,
+      'Withdrawal requested',
+      `KES ${result.data.transaction.amount.toFixed(2)} is being processed for withdrawal.`,
     );
 
     this.logger.log(
-      `User ${userId} withdraws KES ${result.data.currentAmount.toFixed(2)}`,
+      `User ${userId} requested withdrawal of KES ${result.data.transaction.amount.toFixed(2)}`,
+      TransactionsService.name,
     );
 
     return result;
@@ -239,9 +259,19 @@ export class TransactionsService {
       take: limit,
     });
 
+    const total = await this.prisma.transaction.count({
+      where: { userId },
+    });
+
     return {
       message: 'Transactions retrieved successfully',
       data: result,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
